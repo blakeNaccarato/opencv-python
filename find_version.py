@@ -55,14 +55,14 @@ if __name__ == "__main__":
     if len(tag) == 1:
         # tag identifies the build and should be a sequential revision number
         version = tag[0]
-        opencv_version += ".{}".format(version)
+        opencv_version += f".{version}"
     else:
         # local version identifier, not to be published on PyPI
         version = git_hash
-        opencv_version += "+{}".format(version)
+        opencv_version += f"+{version}"
 
     with open("cv2/version.py", "w") as f:
-        f.write('opencv_version = "{}"\n'.format(opencv_version))
-        f.write("contrib = {}\n".format(contrib))
-        f.write("headless = {}\n".format(headless))
-        f.write("ci_build = {}".format(ci_build))
+        f.write(f'opencv_version = "{opencv_version}"\n')
+        f.write(f"contrib = {contrib}\n")
+        f.write(f"headless = {headless}\n")
+        f.write(f"ci_build = {ci_build}")

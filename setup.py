@@ -15,7 +15,7 @@ def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     CI_BUILD = os.environ.get("CI_BUILD", "False")
-    is_CI_build = True if CI_BUILD == "1" else False
+    is_CI_build = CI_BUILD == "1"
     cmake_source_dir = "opencv"
     minimum_supported_numpy = "1.13.3"
     build_contrib = get_build_env_var_by_name("contrib")
@@ -64,11 +64,12 @@ def main():
 
     package_name = "opencv-python"
 
-    if build_contrib and not build_headless:
-        package_name = "opencv-contrib-python"
+    if build_contrib:
+        if not build_headless:
+            package_name = "opencv-contrib-python"
 
-    if build_contrib and build_headless:
-        package_name = "opencv-contrib-python-headless"
+        if build_headless:
+            package_name = "opencv-contrib-python-headless"
 
     if build_headless and not build_contrib:
         package_name = "opencv-python-headless"
@@ -78,7 +79,7 @@ def main():
     packages = ["cv2", "cv2.data"]
 
     package_data = {
-        "cv2": ["*%s" % sysconfig.get_config_vars().get("SO"), "version.py"]
+        "cv2": [f'*{sysconfig.get_config_vars().get("SO")}', "version.py"]
         + (["*.dll"] if os.name == "nt" else [])
         + ["LICENSE.txt", "LICENSE-3RD-PARTY.txt"],
         "cv2.data": ["*.xml"],
@@ -88,41 +89,24 @@ def main():
     # Path regexes with forward slashes relative to CMake install dir.
     rearrange_cmake_output_data = {
         "cv2": (
-            [r"bin/opencv_videoio_ffmpeg\d{3}%s\.dll" % ("_64" if is64 else "")]
+            [
+                r"bin/opencv_videoio_ffmpeg\d{3}%s\.dll"
+                % ("_64" if is64 else "")
+            ]
             if os.name == "nt"
             else []
         )
-        +
-        # In Windows, in python/X.Y/<arch>/; in Linux, in just python/X.Y/.
-        # Naming conventions vary so widely between versions and OSes
-        # had to give up on checking them.
-        [
-            r"python/cv2/python-%s/cv2.*"
-            % (sys.version_info[0])
-        ]
-        +
-        [
-            r"python/cv2/__init__.py"
-        ]
-        +
-        [
-            r"python/cv2/.*config.*.py"
-        ],
+        + [f"python/cv2/python-{sys.version_info[0]}/cv2.*"]
+        + [r"python/cv2/__init__.py"]
+        + [r"python/cv2/.*config.*.py"],
         "cv2.data": [  # OPENCV_OTHER_INSTALL_PATH
-            ("etc" if os.name == "nt" else "share/opencv4") + r"/haarcascades/.*\.xml"
+            ("etc" if os.name == "nt" else "share/opencv4")
+            + r"/haarcascades/.*\.xml"
         ],
-        "cv2.gapi": [
-            "python/cv2" + r"/gapi/.*\.py"
-        ],
-        "cv2.mat_wrapper": [
-            "python/cv2" + r"/mat_wrapper/.*\.py"
-        ],
-        "cv2.misc": [
-            "python/cv2" + r"/misc/.*\.py"
-        ],
-        "cv2.utils": [
-            "python/cv2" + r"/utils/.*\.py"
-        ],
+        "cv2.gapi": ["python/cv2" + r"/gapi/.*\.py"],
+        "cv2.mat_wrapper": ["python/cv2" + r"/mat_wrapper/.*\.py"],
+        "cv2.misc": ["python/cv2" + r"/misc/.*\.py"],
+        "cv2.utils": ["python/cv2" + r"/utils/.*\.py"],
     }
 
     # Files in sourcetree outside package dir that should be copied to package.
@@ -138,21 +122,14 @@ def main():
     cmake_args = (
         (ci_cmake_generator if is_CI_build else [])
         + [
-            # skbuild inserts PYTHON_* vars. That doesn't satisfy opencv build scripts in case of Py3
-            "-DPYTHON3_EXECUTABLE=%s" % sys.executable,
-            "-DPYTHON3_INCLUDE_DIR=%s" % python_include_dir,
-            "-DPYTHON3_LIBRARY=%s" % python_lib_path,
+            f"-DPYTHON3_EXECUTABLE={sys.executable}",
+            f"-DPYTHON3_INCLUDE_DIR={python_include_dir}",
+            f"-DPYTHON3_LIBRARY={python_lib_path}",
             "-DBUILD_opencv_python3=ON",
             "-DBUILD_opencv_python2=OFF",
-            # Disable the Java build by default as it is not needed
-            "-DBUILD_opencv_java=%s" % build_java,
-            # Relative dir to install the built module to in the build tree.
-            # The default is generated from sysconfig, we'd rather have a constant for simplicity
+            f"-DBUILD_opencv_java={build_java}",
             "-DOPENCV_PYTHON3_INSTALL_PATH=python",
-            # Otherwise, opencv scripts would want to install `.pyd' right into site-packages,
-            # and skbuild bails out on seeing that
             "-DINSTALL_CREATE_DISTRIB=ON",
-            # See opencv/CMakeLists.txt for options and defaults
             "-DBUILD_opencv_apps=OFF",
             "-DBUILD_opencv_freetype=OFF",
             "-DBUILD_SHARED_LIBS=OFF",
@@ -163,19 +140,24 @@ def main():
             "-DBUILD_OPENEXR=ON",
         ]
         + (
-            # CMake flags for windows/arm64 build
-            ["-DCMAKE_GENERATOR_PLATFORM=ARM64",
-             # Emulated cmake requires following flags to correctly detect
-             # target architecture for windows/arm64 build
-             "-DOPENCV_WORKAROUND_CMAKE_20989=ON",
-             "-DCMAKE_SYSTEM_PROCESSOR=ARM64"]
+            [
+                "-DCMAKE_GENERATOR_PLATFORM=ARM64",
+                # Emulated cmake requires following flags to correctly detect
+                # target architecture for windows/arm64 build
+                "-DOPENCV_WORKAROUND_CMAKE_20989=ON",
+                "-DCMAKE_SYSTEM_PROCESSOR=ARM64",
+            ]
             if platform.machine() == "ARM64" and sys.platform == "win32"
             # If it is not defined 'linker flags: /machine:X86' on Windows x64
-            else ["-DCMAKE_GENERATOR_PLATFORM=x64"] if is64 and sys.platform == "win32"
+            else ["-DCMAKE_GENERATOR_PLATFORM=x64"]
+            if is64 and sys.platform == "win32"
             else []
-          )
+        )
         + (
-            ["-DOPENCV_EXTRA_MODULES_PATH=" + os.path.abspath("opencv_contrib/modules")]
+            [
+                "-DOPENCV_EXTRA_MODULES_PATH="
+                + os.path.abspath("opencv_contrib/modules")
+            ]
             if build_contrib
             else []
         )
@@ -210,14 +192,11 @@ def main():
                     (r"lib/qt/plugins/platforms/libqxcb\.so")
                 ]
 
-                # add fonts for Qt5
-                fonts = []
-                for file in os.listdir("/usr/share/fonts/dejavu"):
-                    if file.endswith(".ttf"):
-                        fonts.append(
-                            (r"lib/qt/fonts/dejavu/%s\.ttf" % file.split(".")[0])
-                        )
-
+                fonts = [
+                    r"lib/qt/fonts/dejavu/%s\.ttf" % file.split(".")[0]
+                    for file in os.listdir("/usr/share/fonts/dejavu")
+                    if file.endswith(".ttf")
+                ]
                 rearrange_cmake_output_data["cv2.qt.fonts"] = fonts
 
             if sys.platform == "darwin":
@@ -377,15 +356,14 @@ class RearrangeCMakeOutput(object):
         # add lines from the old __init__.py file to the config file
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts', '__init__.py'), 'r') as custom_init:
             custom_init_data = custom_init.read()
-        with open('%spython/cv2/config-%s.py'
-        % (cmake_install_dir, sys.version_info[0]), 'w') as opencv_init_config:
+        with open(f'{cmake_install_dir}python/cv2/config-{sys.version_info[0]}.py', 'w') as opencv_init_config:
             opencv_init_config.write(custom_init_data)
 
         for package_name, relpaths_re in cls.package_paths_re.items():
             package_dest_reldir = package_name.replace(".", os.path.sep)
             for relpath_re in relpaths_re:
                 found = False
-                r = re.compile(relpath_re + "$")
+                r = re.compile(f"{relpath_re}$")
                 for fslash_relpath, relpath in relpaths_zip:
                     m = r.match(fslash_relpath)
                     if not m:
@@ -404,7 +382,7 @@ class RearrangeCMakeOutput(object):
                 else:
                     # gapi can be missed if ADE was not downloaded (network issue)
                     if not found and "gapi" not in relpath_re:
-                        raise Exception("Not found: '%s'" % relpath_re)
+                        raise Exception(f"Not found: '{relpath_re}'")
                 del r, found
 
         del relpaths_zip
@@ -470,13 +448,13 @@ def get_build_env_var_by_name(flag_name):
     flag_set = False
 
     try:
-        flag_set = bool(int(os.getenv("ENABLE_" + flag_name.upper(), None)))
+        flag_set = bool(int(os.getenv(f"ENABLE_{flag_name.upper()}", None)))
     except Exception:
         pass
 
     if not flag_set:
         try:
-            flag_set = bool(int(open(flag_name + ".enabled").read(1)))
+            flag_set = bool(int(open(f"{flag_name}.enabled").read(1)))
         except Exception:
             pass
 
